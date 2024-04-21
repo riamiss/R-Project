@@ -1,0 +1,254 @@
+---
+title: "R Project"
+author: "Ria"
+date: "2023-12-19"
+output: html_document
+---
+### **What are the key demographics of visitors in London?**
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r import_libraries, include=FALSE}
+#importing important libraries necessary
+#readr
+library(tidyverse)
+#data manipulation
+library(dplyr)
+#data viz
+library(ggplot2)
+library(corrplot)
+
+# make sure to install the package when running:
+#install.packages("gt")
+# for creating table
+library(gt)
+
+
+
+```
+
+
+```{r echo=FALSE, fig.align = "center", warning = FALSE}
+knitr::include_graphics("photo.jpg")
+```
+
+
+```{r databases, include=FALSE, warning=FALSE}
+# importing the dataset
+visitors <- readxl::read_xlsx("international-visitors-london.xlsx")
+
+```
+
+
+```{r data_manipulation, include=FALSE, warning=FALSE}
+#check data type
+str(visitors)
+#the year column is shown as chr instead of num
+#convert to numeric 
+visitors$year <- as.numeric(visitors$year)
+#check which columns and rows are NA values
+which(is.na(visitors), arr.ind = TRUE)
+#the year 2020 is appearing as NA as it was previously 2020P when converting to numeric
+
+# Fill in NA values in the specified column with 2020
+visitors$year[is.na(visitors$year)] <- 2020
+
+tail(visitors)
+#shows that the year 2020 has now been updated instead of having NA values
+
+#remove the column 'area' because its all london
+visitors <- visitors %>%
+  select(-area)
+
+
+#the number of visits is in 1000s, and so are the nights. I want to change the values to reflect true values, as well as change the title of the columns
+colnames(visitors)[colnames(visitors) == "Visits (000s)"] <- "visits"
+visitors$visits <- visitors$visits * 1000
+
+colnames(visitors)[colnames(visitors) == "Nights (000s)"] <- "nights"
+visitors$nights <- visitors$nights * 1000
+
+colnames(visitors)[colnames(visitors) == "Expenditure (m pounds)"] <- "expenditure"
+visitors$expenditure <- visitors$expenditure * 1000000
+
+
+#change VFR into its full form (Visiting Friends and Relatives)
+visitors <- visitors %>%
+  mutate(purpose = ifelse(purpose == "VFR", "Visiting Friends and Relatives", purpose))
+
+```
+
+
+### This is a sneak peek of the datasets being used:
+```{r data_peek, echo=FALSE, warning=FALSE}
+summary(visitors)
+head(visitors)
+tail(visitors)
+```
+\
+\
+\
+
+### What purpose do people usually visit London for?
+```{r purpose, echo=FALSE, warning=FALSE}
+visitors_grouped <- visitors %>% 
+                    group_by(purpose)
+# bar graph to show the purpose of visitors, separated by the mode of transport they used
+ggplot(visitors_grouped, aes(x=purpose, y=visits/1000, fill=mode))+
+  geom_col() +
+  labs(title = "Purpose of Visits to London", x= "Purpose", y = "Number of Visitors (000s)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          panel.background = element_blank())
+
+```
+\
+
+- We can see here the main purpose of visiting London is holiday, and the least number of visits come from students for the purpose of study. It seems that for each purpose the main mode of transport into London is via air.
+\
+\
+\
+
+### What is the porportion of visitors using the different modes of transportation to get into London?
+```{r mode, echo=FALSE, warning=FALSE}
+visitors_grouped2 <- visitors %>% 
+                    group_by(year)
+ggplot(visitors, aes(x=mode, y=visits/1000, fill=year))+
+  geom_col() +
+  labs(title = "Mode of Visits to London", x= "Mode", y = "Number of Visitors (000s)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          panel.background = element_blank())
+```
+\
+
+- It can be observed that the main mode of traveling to London is through air travel. This might be due to the fact that most of the visitors are international, and the most convenient way of getting into London is by airplane, and London has is a major city with two international airports. Travel by sea and by Tunnel would make sense from nearby countries which have a route via sea or tunnel, and even then they might prefer to travel by air as it is faster and more convenient.
+\
+\
+\
+
+### How did the number of visitors change over the years?
+
+```{r visitors, echo=FALSE, warning=FALSE}
+visitors_grouped3 <- visitors %>% 
+                    group_by(year) 
+
+ggplot(visitors_grouped3, aes(x=year, y=visits/1000000))+
+  geom_col(color="darkred", fill="darkred") +
+  labs(title = "Visitors to London Over the Years", x= "Year", y = "Number of Visitors (millions)") +
+    theme(axis.text.x = element_text(hjust = 0.5),
+          plot.title = element_text(hjust = 0.5),
+          panel.background = element_blank())
+```
+\
+
+- There is generally an increasing trend of visitors to London over the years. This might be due to increased connectivity and transportation systems. There is a large dip in 2020, this is most probably due to Covid restrictions. 
+\
+\
+\
+
+### How modes of travel change over the years?
+
+```{r air_travel, echo=FALSE, warning=FALSE}
+# summarise the data to show total visitors, and the percentages of visitors using different modes of transportation
+sp <- visitors %>%
+  group_by(year) %>%
+  summarise(
+    total_visitors = sum(visits),
+    air_percentage = sum(visits[mode == 'Air'], na.rm = TRUE) / total_visitors * 100,
+    sea_percentage = sum(visits[mode == 'Sea'], na.rm = TRUE) / total_visitors * 100,
+    tunnel_percentage = sum(visits[mode == 'Tunnel'], na.rm = TRUE) / total_visitors * 100
+  ) %>%
+  ungroup()
+
+# create a table using gt package
+sp %>%
+  gt() %>%
+  tab_spanner(label= "   ", columns = everything()) %>%
+  fmt_number(columns = vars(air_percentage, tunnel_percentage, sea_percentage), decimals=2) %>%
+ tab_header(
+   title = "Percentage of Visitors Traveling to London by Different Modes over the Years")
+```
+
+\
+
+- This table shows the proportions of people taking the different modes of transportation into London remained fairly the same throughout the years. 
+\
+\
+\
+
+### What is the mean number of visitors from the different countries?
+```{r mean, echo=FALSE, warning=FALSE}
+sp2 <- visitors %>%
+  group_by(market) %>%
+  summarise(
+    mean_visitors = mean(visits))
+
+ggplot(sp2, aes(x=market, y=mean_visitors/1000))+
+  geom_col(color="green", fill="blue") +
+  labs(title = "Mean Number of Visitors to London from Different Countries", x= "Country", y = "Mean Number of Visitors (000s)") +
+    theme(axis.text.x = element_text(angle = 60, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          panel.background = element_blank())
+
+```
+\
+
+- We can see that the most visitors come from USA, followed by Italy and then Spain. The least number of visitors come from Kenya, Egypt and Austria.
+\
+\
+\
+
+### People from which country spend the most amount of money averagely per pax in 2020?
+```{r expenditure, echo=FALSE, warning=FALSE}
+
+sp3 <- visitors %>%
+  group_by(market) %>%
+  summarise(
+    total_visitors = sum(visits),
+    total_exp = sum(expenditure),
+    expenditure_per_pax = (total_exp/total_visitors)) %>%
+  ungroup()
+
+ggplot(sp3, aes(x=market, y= expenditure_per_pax/1000))+
+  geom_col(color="blue", fill="green") +
+  labs(title = "Money Spent By Visitors From Each Country", x= "Country", y = "Expenditure Per Pax (thousands)")+
+    theme(axis.text.x = element_text(angle = 60, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          panel.background = element_blank())
+
+```
+\
+
+- We can see that visitors from Bahrain, Kuwait, Qatar, Saudi Arabia and United Arab Emirates tend to spend most amount of money per pax in London. This is rather interesting, as all of them are countries of the Middle East.
+\
+\
+\
+
+### Which quarter of the year do we see the most visitors?
+```{r, echo=FALSE, }
+
+sp4 <- visitors %>%
+  group_by(market) %>%
+  group_by(year)
+
+ggplot(sp4, aes(x=quarter, y= visits/1000000))+
+  geom_col(color="turquoise") +
+  labs(title = "Visitors Each Quarter", x= "Quarter", y = "Visitors (millions)")+
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5),
+          panel.background = element_blank())
+
+
+```
+\
+
+- July-September seems to be the most popular time for visiting London, I suspect it is due to the weather being the best during this period as it is summer. However, there is not much significant difference between the quarters.
+\
+\
+\
+This report shows the visitor demographics of London. Effective visualisations used will show the different demographics of the visitors. 
+The data has been reshaped and cleaned using dplyr and tidyr to make it suitable for each visualisation. There were challenges in trying to figure out how to reshape the data in order to get the most effective visualisation in what I was trying to show. I also calculated some mean and percentages to show in the visualisations.
+This project could be extended further by including other datasets and finding more advanced statistical analysis, and doing correlation analyses between different factors.
